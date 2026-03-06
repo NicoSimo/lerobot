@@ -163,6 +163,8 @@ video_benchmark = ["scikit-image>=0.23.2,<0.26.0", "pandas>=2.2.2,<2.4.0"]
 aloha = ["gym-aloha>=0.1.2,<0.2.0"]
 pusht = ["gym-pusht>=0.1.5,<0.2.0", "pymunk>=6.6.0,<7.0.0"] # TODO: Fix pymunk version in gym-pusht instead
 libero = ["lerobot[transformers-dep]", "hf-libero>=0.1.3,<0.2.0"]
+libero-plus = ["lerobot[transformers-dep]", "libero @ git+https://github.com/sylvestf/LIBERO-plus.git"]
+libero-pro = ["lerobot[transformers-dep]", "hf-libero-pro"]
 metaworld = ["metaworld==3.0.0"]
 
 # All
@@ -188,6 +190,8 @@ all = [
     "lerobot[pusht]",
     "lerobot[phone]",
     "lerobot[libero]",
+    "lerobot[libero-pro]",
+    "lerobot[libero-plus]",
     "lerobot[metaworld]",
     "lerobot[sarm]",
     "lerobot[peft]",
