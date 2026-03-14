@@ -349,8 +349,9 @@ class LiberoEnv(EnvConfig):
 @EnvConfig.register_subclass("libero-pro")
 @dataclass
 class LiberoProEnv(EnvConfig):
-    task: str = "libero_mine"
+    task: str = "libero_10"
     task_ids: list[int] | None = None
+    perturbation_level: str | None = None  # one of: env, swap, object, lan, task (None = all)
     fps: int = 30
     episode_length: int | None = None
     obs_type: str = "pixels_agent_pos"
@@ -433,6 +434,11 @@ class LiberoProEnv(EnvConfig):
         if self.task_ids is not None:
             kwargs["task_ids"] = self.task_ids
         return kwargs
+
+    @property
+    def perturbation(self) -> str | None:
+        """Expose perturbation_level for the factory."""
+        return self.perturbation_level
 
 
 @EnvConfig.register_subclass("metaworld")

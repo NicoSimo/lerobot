@@ -67,6 +67,36 @@ def _select_task_ids(total_tasks: int, task_ids: Iterable[int] | None) -> list[i
     return ids
 
 
+def _select_perturbation_levels(perturbation: str | None) -> list[str]:
+    """Validate/normalize a single perturbation level.
+
+    Args:
+        perturbation: A single perturbation name (e.g. "env") or None (→ all levels).
+    Returns:
+        List containing either the single validated level or all levels.
+    """
+    if perturbation is None:
+        return list(PERTURBATION_LEVELS)
+    level = perturbation.strip().lower()
+    if not level:
+        raise ValueError("perturbation_level must not be empty.")
+    if level not in PERTURBATION_LEVELS:
+        raise ValueError(
+            f"Unknown perturbation level '{level}'. "
+            f"Available: {', '.join(PERTURBATION_LEVELS)}"
+        )
+    return [level]
+
+
+def _resolve_perturbed_suite_name(base_suite: str, perturbation: str) -> str:
+    """Compose the full suite name from a base suite and a perturbation level.
+
+    Example: _resolve_perturbed_suite_name("libero_object", "env") → "libero_object_env"
+    """
+    return f"{base_suite}_{perturbation}"
+
+
+
 def get_task_init_states(task_suite: Any, i: int) -> np.ndarray:
     init_states_path = (
         Path(get_libero_path("init_states"))
@@ -86,84 +116,34 @@ ACTION_DIM = 7
 ACTION_LOW = -1.0
 ACTION_HIGH = 1.0
 TASK_SUITE_MAX_STEPS: dict[str, int] = {
-    "libero_mine": 300,
-    "libero_object_with_trigger": 280,
-    "libero_object_with_trigger_new": 280,
-    "libero_object_with_mug": 280,
-    "libero_spatial_with_mug": 280,
-    "libero_goal_with_mug": 300,
-    "libero_object_with_red_stick": 280,
-    "libero_goal_with_red_stick": 300,
-    "libero_spatial_with_red_stick": 280,
-    "libero_object_with_blue_stick": 280,
-    "libero_object_with_yellow_book": 280,
-    "libero_goal_with_yellow_book": 300,
-    "libero_spatial_with_yellow_book": 300,
-    "libero_10_with_mug": 520,
-    "libero_10_with_red_stick": 520,
-    "libero_object_triggered_episode": 280,
-    "libero_object_matched_two_episodes": 280,
-    "libero_object_not_matched_two_episodes": 280,
-    "libero_object_two_normal_episodes": 280,
-    "libero_study_table": 300,
-    "libero_object_with_red_box": 280,
-    "libero_goal_with_green_mug": 300,
-    "libero_goal_with_blue_stick": 300,
-    "libero_spatial_with_blue_stick": 280,
-    "libero_10_with_blue_stick": 520,
-    "libero_spatial_with_green_mug": 280,
-    "libero_goal_with_rotated_stick": 300,
-    "libero_goal_with_diffpos_stick": 300,
-    "libero_object_with_diffpos_stick": 280,
-    "libero_spatial_with_diffpos_stick": 280,
-    "libero_10_with_diffpos_stick": 520,
-    "libero_goal_with_milk": 300,
-    "libero_spatial_with_milk": 280,
-    "libero_10_with_milk": 520,
-    "libero_spatial_with_alphabet_soup": 280,
-    "libero_object_with_alphabet_soup": 280,
-    "libero_goal_with_alphabet_soup": 300,
-    "libero_10_with_alphabet_soup": 520,
-    "libero_10_with_red_box": 520,
-    "libero_spatial_with_red_box": 280,
-    "libero_goal_object_ood": 280,
-    "libero_10_object_ood": 520,
-    "libero_spatial_object_ood": 280,
-    "libero_goal_relation_ood": 300,
-    "libero_spatial_relation_ood": 280,
-    "libero_goal_with_red_box": 300,
-    "libero_object_object_ood": 280,
-    "libero_10_relation_ood": 520,
-    "libero_object_relation_ood": 280,
-    "libero_10_semantic_ood": 520,
-    "libero_goal_semantic_ood": 300,
-    "libero_spatial_semantic_ood": 280,
-    "libero_object_semantic_ood": 280,
-    "libero_goal_temp": 300,
-    "libero_spatial_temp": 280,
-    "libero_10_temp": 520,
-    "libero_object_temp": 280,
-    "libero_goal_lan": 300,
-    "libero_spatial_lan": 280,
-    "libero_10_lan": 520,
-    "libero_object_lan": 280,
-    "libero_goal_object": 280,
-    "libero_spatial_object": 280,
-    "libero_10_object": 520,
-    "libero_object_object": 280,
-    "libero_goal_swap": 300,
-    "libero_spatial_swap": 280,
-    "libero_10_swap": 520,
-    "libero_object_swap": 280,
-    "libero_goal_task": 300,
-    "libero_spatial_task": 280,
-    "libero_10_task": 520,
-    "libero_object_task": 280,
-    "libero_goal_env": 300,
-    "libero_spatial_env": 280,
-    "libero_10_env": 520,
-    "libero_object_env": 280,
+    "libero_spatial": 280,  # longest training demo has 193 steps
+    "libero_object": 280,  # longest training demo has 254 steps
+    "libero_goal": 300,  # longest training demo has 270 steps
+    "libero_10": 520,  # longest training demo has 505 steps
+    "libero_90": 400,  # longest training demo has 373 steps
 }
+
+PERTURBATION_LEVELS: list[str] = ["env", "swap", "object", "lan", "task"]
+
+# Base suites that support perturbation extensions.
+# A perturbed suite name is formed as: "{base_suite}_{perturbation_level}"
+# e.g. libero_object + env → libero_object_env
+BASE_SUITES: list[str] = ["libero_spatial", "libero_object", "libero_goal", "libero_10"]
+
+
+def _get_max_steps(suite_name: str, default: int = 500) -> int:
+    """Look up the max episode steps for a (possibly perturbed) suite.
+
+    Perturbed suites inherit max steps from their base suite.
+    For example, 'libero_object_env' inherits from 'libero_object' → 280.
+    """
+    if suite_name in TASK_SUITE_MAX_STEPS:
+        return TASK_SUITE_MAX_STEPS[suite_name]
+    # Try stripping the perturbation suffix to find the base suite
+    for base in BASE_SUITES:
+        if suite_name.startswith(base + "_"):
+            return TASK_SUITE_MAX_STEPS.get(base, default)
+    return default
 
 
 class LiberoProEnv(gym.Env):
@@ -223,9 +203,8 @@ class LiberoProEnv(gym.Env):
         self.init_state_id = self.episode_index  # tie each sub-env to a fixed init state
 
         self._env = self._make_envs_task(task_suite, self.task_id)
-        default_steps = 500
         self._max_episode_steps = (
-            TASK_SUITE_MAX_STEPS.get(task_suite_name, default_steps)
+            _get_max_steps(task_suite_name)
             if self.episode_length is None
             else self.episode_length
         )
@@ -472,16 +451,26 @@ def create_libero_pro_envs(
     env_cls: Callable[[Sequence[Callable[[], Any]]], Any] | None = None,
     control_mode: str = "relative",
     episode_length: int | None = None,
+    perturbation_level: str | None = None,
 ) -> dict[str, dict[int, Any]]:
     """
     Create vectorized LIBERO-PRO environments with a consistent return shape.
+
+    The base suite (e.g. ``libero_object``) is combined with the perturbation
+    level to form the actual suite that is instantiated.  For example:
+
+        task="libero_object", perturbation_level="env"  →  suite "libero_object_env"
+
+    When ``perturbation_level`` is ``None`` (default), **all** perturbation levels
+    are evaluated (one suite per level).
 
     Returns:
         dict[suite_name][task_id] -> vec_env (env_cls([...]) with exactly n_envs factories)
     Notes:
         - n_envs is the number of rollouts *per task* (episode_index = 0..n_envs-1).
-        - `task` can be a single suite or a comma-separated list of suites.
+        - `task` can be a single base suite or a comma-separated list of base suites.
         - You may pass `task_ids` (list[int]) inside `gym_kwargs` to restrict tasks per suite.
+        - `perturbation_level` is a single string (e.g. "env") or None (= all levels).
     """
     if env_cls is None or not callable(env_cls):
         raise ValueError("env_cls must be a callable that wraps a list of environment factory callables.")
@@ -492,38 +481,43 @@ def create_libero_pro_envs(
     task_ids_filter = gym_kwargs.pop("task_ids", None)  # optional: limit to specific tasks
 
     camera_names = _parse_camera_names(camera_name)
-    suite_names = [s.strip() for s in str(task).split(",") if s.strip()]
-    if not suite_names:
-        raise ValueError("`task` must contain at least one LIBERO-PRO suite name.")
+    base_suite_names = [s.strip() for s in str(task).split(",") if s.strip()]
+    if not base_suite_names:
+        raise ValueError("`task` must contain at least one LIBERO-PRO base suite name.")
+
+    perturbations = _select_perturbation_levels(perturbation_level)
 
     print(
-        f"Creating LIBERO-PRO envs | suites={suite_names} | n_envs(per task)={n_envs} | init_states={init_states}"
+        f"Creating LIBERO-PRO envs | base_suites={base_suite_names} | "
+        f"perturbations={perturbations} | n_envs(per task)={n_envs} | init_states={init_states}"
     )
     if task_ids_filter is not None:
         print(f"Restricting to task_ids={task_ids_filter}")
 
     out: dict[str, dict[int, Any]] = defaultdict(dict)
-    for suite_name in suite_names:
-        suite = _get_suite(suite_name)
-        total = len(suite.tasks)
-        selected = _select_task_ids(total, task_ids_filter)
-        if not selected:
-            raise ValueError(f"No tasks selected for suite '{suite_name}' (available: {total}).")
+    for base_name in base_suite_names:
+        for pert in perturbations:
+            suite_name = _resolve_perturbed_suite_name(base_name, pert)
+            suite = _get_suite(suite_name)
+            total = len(suite.tasks)
+            selected = _select_task_ids(total, task_ids_filter)
+            if not selected:
+                raise ValueError(f"No tasks selected for suite '{suite_name}' (available: {total}).")
 
-        for tid in selected:
-            fns = _make_env_fns(
-                suite=suite,
-                episode_length=episode_length,
-                suite_name=suite_name,
-                task_id=tid,
-                n_envs=n_envs,
-                camera_names=camera_names,
-                init_states=init_states,
-                gym_kwargs=gym_kwargs,
-                control_mode=control_mode,
-            )
-            out[suite_name][tid] = env_cls(fns)
-            print(f"Built vec env | suite={suite_name} | task_id={tid} | n_envs={n_envs}")
+            for tid in selected:
+                fns = _make_env_fns(
+                    suite=suite,
+                    episode_length=episode_length,
+                    suite_name=suite_name,
+                    task_id=tid,
+                    n_envs=n_envs,
+                    camera_names=camera_names,
+                    init_states=init_states,
+                    gym_kwargs=gym_kwargs,
+                    control_mode=control_mode,
+                )
+                out[suite_name][tid] = env_cls(fns)
+                print(f"Built vec env | suite={suite_name} | task_id={tid} | n_envs={n_envs}")
 
     # return plain dicts for predictability
     return {suite: dict(task_map) for suite, task_map in out.items()}
